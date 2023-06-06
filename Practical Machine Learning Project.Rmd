@@ -1,0 +1,123 @@
+---
+title: "Practical Machine Learning Project"
+author: "QW"
+date: "2023-06-05"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction about Prediction
+
+In this prediction project, data is from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. Its goal is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. We will use any of the other variables to predict with. This report includes describing how we built our model, how we used cross validation, what we think the expected out of sample error is, and why we made the final choice. We will also use the final prediction model to predict 20 different test cases. 
+
+## Read the accelerometer data
+
+```{r}
+#Import the training data.
+library(gbm)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(caret)
+library(randomForest)
+train_data <- read.csv("C:/Users/wangq/Downloads/pml-training.csv", na.strings = c("", "NA"))
+#str(train_data)
+#View(train_data)
+
+#Import the test data with 20 cases.
+test_data <- read.csv("C:/Users/wangq/Downloads/pml-testing.csv", na.strings = c("", "NA"))
+#str(test_data)
+
+#Partition the training data into two datasets (75% vs 25%)
+# Set up the seed for partitioning the train_data dataset.
+set.seed(2023)
+train <- createDataPartition(y=train_data$classe, p=0.75, list=FALSE)
+new_training <- train_data[train, ]
+new_testing <- train_data[-train, ]
+
+#Data cleaning by remove both the near-zero-variance (NZV) columns, the NA columns and those 5 identification variables.
+nzv_columns <- nearZeroVar(new_training)
+new_training <- new_training[ , -nzv_columns]
+new_testing  <- new_testing [ , -nzv_columns]
+
+new_training <- new_training[, colSums(is.na(new_training)) == 0]
+new_testing <- new_testing[, colSums(is.na(new_testing)) == 0]
+
+new_training <- new_training[ , -(1:5)]
+new_testing  <- new_testing[ , -(1:5)]
+
+#Now the dimensions of both new_training and new_testing datasets were reduced from 160 columns to 54 ones.
+dim(new_training)
+dim(new_testing)
+```
+
+
+
+## We tried the generalized boosted model, decision tree and random forest models using 5-folds cross validations.
+
+```{r}
+#Generalized Boosted Model (GBM)
+gbm_model <- train(classe ~., data = new_training, method = "gbm", verbose = FALSE,
+                                trControl = trainControl(method = "cv", number = 5))
+gbm_model
+gbm_model$finalModel
+
+#Apply GBM model Prediction on new_testing.
+pred_gbm <- predict(gbm_model, new_testing)
+table(pred_gbm)
+pred_gbm_result <- confusionMatrix(pred_gbm, factor(new_testing$classe))
+pred_gbm_result 
+#The accuracy rate of the Generalized Boosted Model (GMB) is 98.61%.
+
+##Decision Tree Model (DTM)
+dtm_model <- rpart(classe ~ ., data = new_training, method="class")
+printcp(dtm_model)  
+#fancyRpartPlot(dtm_model)
+
+prune.dtm_model <- prune(dtm_model, cp=0.04)   #prune the tree with cp=0.04
+printcp(prune.dtm_model)
+
+#windows()
+rpart.plot(prune.dtm_model)              #pruned tree 
+#dev.off()
+
+##Apply DTM model Prediction on new_testing.
+pred_dtm <- predict(dtm_model, new_testing, type="class")
+table(pred_dtm)
+pred_dtm_result <- confusionMatrix(pred_dtm, factor(new_testing$classe))
+pred_dtm_result 
+#The accuracy rate of the Decision Tree Model (DTM) is 81.89%, which is lower than GMB model prediction above.
+
+
+##Random Forest model (RFM)
+rfm_model <- train(classe ~., data = new_training, method = "rf",
+                trControl = trainControl("cv", number = 5))
+rfm_model
+rfm_model$finalModel
+
+##Apply RFM model Prediction on new_testing.
+pred_rfm <- predict(rfm_model, new_testing)
+table(pred_rfm)
+pred_rfm_result <- confusionMatrix(pred_rfm, factor(new_testing$classe))
+pred_rfm_result 
+```
+
+The accuracy rate of the Random Forest model (RFM) is 99.82%, which is close to 100% and higher than other models (GMB and DTM) prediction above. And the out of sample error is almost zero.
+
+Overall, we choose the random forest model as the best predictive model based on its accuracy rate nearly 100% and the expected out of sample error close to zero.
+
+
+## Use Random Forest model (RFM) model to predict 20 different test cases in test_data.
+```{r}
+quiz_predict <- as.data.frame(predict(rfm_model, newdata = test_data))
+
+#Obtain the answers for the prediction quiz
+quiz_predict
+```
+
+
